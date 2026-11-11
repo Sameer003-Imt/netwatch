@@ -52,3 +52,8 @@ def test_read_pcap(tmp_path):
     assert len(records) == 2
     assert [r.service for r in records] == ["HTTP","DNS"]
 
+def test_service_uses_source_port_for_replies():
+    rec= parse_packet(IP(src="10.0.0.2",dst="10.0.0.1") / TCP(sport=443,dport=51000,flags="SA"))
+    assert rec.service == "HTTPS"
+
+    

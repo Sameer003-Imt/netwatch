@@ -41,7 +41,7 @@ class PacketRecord:
         for port in (self.dst_port, self.src_port):
             if port in WELL_KNOWN_PORTS:
                 return WELL_KNOWN_PORTS[port]
-            return self.protocol
+        return self.protocol
 
 def parse_packet(pkt) -> Optional[PacketRecord]:
     if IP in pkt:

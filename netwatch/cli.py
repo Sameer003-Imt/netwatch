@@ -1,9 +1,13 @@
 from __future__ import annotations
 import argparse
+from contextlib import nullcontext
 from datetime import datetime
 from .capture import live_capture, read_pcap
+from .formatting import format_bytes
 from .parser import PacketRecord
+from .dashboard import Dashboard
 from .stats import TrafficStats
+
 def format_record(rec: PacketRecord) -> str:
     time = datetime.fromtimestamp(rec.timestamp).strftime("%H:%M:%S")
     src = f"{rec.src_ip}:{rec.src_port}" if rec.src_port is not None else rec.src_ip
@@ -14,12 +18,6 @@ def format_record(rec: PacketRecord) -> str:
     if rec.dns_query:
         line += f" query={rec.dns_query}"
     return line
-
-def format_bytes(num:float) -> str:
-    for unit in ("B","KB","MB","GB"):
-        if num < 1024 or unit == "GB":
-            return f"{num:.1f}{unit}" if unit != "B" else f"{int(num)} B"
-        num /= 1024
 
 def print_summary(stats: TrafficStats) -> None:
     print("\n==== NetWatch Summary ====")
@@ -55,28 +53,71 @@ def main(argv=None) -> None:
                         help="stop after this many packets (0 = no limit)")
     parser.add_argument("--quiet", action="store_true",
                         help="do not print every packet, only the summary")
+    parser.add_argument("--dashboard", action="store_true",
+                        help="show a live dashboard instead of packet lines")
     args = parser.parse_args(argv)
 
     stats = TrafficStats()
-
-    def handle(rec: PacketRecord) -> None:
-        stats.update(rec)
-        if not args.quiet:
-            print(format_record(rec))
-
-    if args.pcap:
-        for i, rec in enumerate(read_pcap(args.pcap), start=1):
-            handle(rec)
-            if args.count and i >= args.count:
-                break
-    else:
+    if args.live and not args.dashboard:
         print("Capturing live traffic... press Ctrl+C to stop.")
-        try:
-            live_capture(handle, interface=args.iface, count=args.count)
-        except KeyboardInterrupt:
-            print("\nStopped.")
 
-    print_summary(stats)
+    # nullcontext() does nothing; it lets us use one `with` for both cases.
+    with Dashboard(stats) if args.dashboard else nullcontext() as dashboard:
+
+        def handle(rec: PacketRecord) -> None:
+            stats.update(rec)
+            if dashboard is not None:
+                dashboard.add(format_record(rec))
+            elif not args.quiet:
+                print(format_record(rec))
+
+        try:
+            if args.pcap:
+                for i, rec in enumerate(read_pcap(args.pcap), start=1):
+                    handle(rec)
+                    if args.count and i >= args.count:
+                        break
+            else:
+                live_capture(handle, interface=args.iface, count=args.count)
+        except KeyboardInterrupt:
+            pass  # Ctrl+C: stop capturing and show the results
+
+    if not args.dashboard:
+        print_summary(stats)
+
+#----------------------------------------#########
+    #parser = argparse.ArgumentParser(
+     #   prog="netwatch", description="Network traffic monitor"
+    #)
+    #source = parser.add_mutually_exclusive_group(required=True)
+    ##source.add_argument("--pcap", help="read packets from a .pcap file")
+    #source.add_argument("--live", action="store_true", help="capture live traffic")
+    #parser.add_argument("--iface", help="network interface for live capture")
+    #parser.add_argument("--count", type=int, default=0,
+     #                   help="stop after this many packets (0 = no limit)")
+    ##                   help="do not print every packet, only the summary")
+    #args = parser.parse_args(argv)
+
+    #stats = TrafficStats()
+
+    ##   stats.update(rec)
+      #  if not args.quiet:
+       #     print(format_record(rec))
+
+    #if args.pcap:
+     ##      handle(rec)
+       #     if args.count and i >= args.count:
+        #        break
+    #else:
+     #   print("Capturing live traffic... press Ctrl+C to stop.")
+      #  try:
+       #     live_capture(handle, interface=args.iface, count=args.count)
+       # except KeyboardInterrupt:
+        #    print("\nStopped.")
+
+    #print_summary(stats)
+
+#-----------------------------------------###
     #parser = argparse.ArgumentParser(
       #  prog="netwatch",description="Network traffic monitor"
     #)
