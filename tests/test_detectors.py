@@ -59,3 +59,75 @@ def test_different_attackers_are_tracked_seperately():
         records.append(syn(i * 0.01, port, src="10.0.0.2"))
     assert run(detector, records) == []
 
+from netwatch.detectors import SuspiciousDnsDetector, TrafficSpikeDetector, shannon_entropy
+
+def packets_at(second, count, src="10.0.0.1"):
+    return[PacketRecord(timestamp=second + i / count, src_ip=src, dst_ip="10.0.0.2",
+                        protocol="UDP",size=100,src_port=1000,dst_port=2000)
+                        for i in range(count)]
+def steady_traffic(seconds, per_second):
+    records = []
+    for s in range(seconds):
+        records += packets_at(s,per_second)
+    return records
+
+def test_steady_traffic_has_no_spike():
+    detector = TrafficSpikeDetector()
+    assert run(detector, steady_traffic(30,20)) == []
+
+def test_sudden_burst_is_a_spike():
+    detector = TrafficSpikeDetector(multiplier=5,min_packets=100)
+    records = steady_traffic(20,10)
+    records += packets_at(20,500)
+    records += packets_at(21,10)
+    alerts = run(detector, records)
+    assert len(alerts) == 1
+    assert alerts[0].kind == "TRAFFIC_SPIKE"
+    assert "500 packets" in alerts[0].message
+
+def test_small_burst_below_minimum_is_ignored():
+    detector = TrafficSpikeDetector(multiplier=5,min_packets=100)
+    records = steady_traffic(20,2) + packets_at(20,50) + packets_at(21,2)
+    assert run(detector, records) == []
+
+def test_no_alert_before_enough_history():
+    detector = TrafficSpikeDetector(min_history=10)
+    records = steady_traffic(3,10) + packets_at(3,500) + packets_at(4,10)
+    assert run(detector, records) == []
+
+def dns(domain, timestamp=0.0):
+    return PacketRecord(timestamp=timestamp, src_ip="10.0.0.1",dst_ip="8.8.8.8",
+                        protocol="UDP",size=80,src_port=53000,dst_port=53,
+                        dns_query=domain)
+
+def test_entropy():
+    assert shannon_entropy("aaaa") == 0
+    assert shannon_entropy("ab") == 1.0
+    assert shannon_entropy ("x7k2p9q4m8z1w5r3t6y0b2") > 4.0
+    assert shannon_entropy("google") < 3.0
+
+def test_normal_domains_are_fine():
+    detector = SuspiciousDnsDetector()
+    normal = ["www.kau.se","google.com","fonts.googleapis.com",
+              "r3---sn-uxax4vopj5qx.googlevideo.com","login.microsoftonline.com"]
+    assert run(detector, [dns(d) for d in normal]) == []
+
+def test_very_long_label_is_suspicious():
+    detector = SuspiciousDnsDetector()
+    tunnel = "aGVsbG8gd29ybGQgdGhpcyBpcyBzZWNyZXQgZGF0YQ.tunnel.example"
+    alerts = run(detector, [dns(tunnel)])
+    assert len(alerts) == 1
+    assert alerts[0].kind == "SUSPICIOUS_DNS"
+    assert "very long" in alerts[0].message
+
+def test_random_looking_domain_is_suspicious():
+    detector = SuspiciousDnsDetector()
+    alerts = run(detector,[dns("x7k2p9q4m8z1w5r3t6y0b2.com")])
+    assert len(alerts) == 1
+    assert "random-looking" in alerts[0].message
+
+def test_same_domain_is_reported_only_once():
+    detector = SuspiciousDnsDetector()
+    lookups = [dns("x7k2p9q4m8z1w5r3t6y0b2.com",t) for t in range(5)]
+    assert len(run(detector,lookups)) == 1
+    
