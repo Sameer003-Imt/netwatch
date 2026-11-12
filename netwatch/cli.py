@@ -11,7 +11,7 @@ from .stats import TrafficStats
 from .alertlog import AlertLog
 import os
 import argparse
-
+from . import __version__
 
 def format_record(rec: PacketRecord) -> str:
     time = datetime.fromtimestamp(rec.timestamp).strftime("%H:%M:%S")
@@ -68,6 +68,8 @@ def main(argv=None) -> None:
                         help="show a live dashboard instead of packet lines")
     parser.add_argument("--alert-log", metavar="FILE",
                         help="save alerts to this file (JSON Lines, e.g. alerts.jsonl)")
+    parser.add_argument("--version",action="version",
+                        version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
 
     if args.pcap and not os.path.exists(args.pcap):
