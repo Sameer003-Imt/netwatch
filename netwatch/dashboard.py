@@ -5,8 +5,8 @@ from rich.console import Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
-
-from .formatting import format_bytes
+from .detectors import Alert
+from .formatting import format_bytes, format_time
 from .stats import TrafficStats
 
 def build_overview(stats: TrafficStats) -> Panel:
@@ -51,15 +51,25 @@ def build_dns_table(stats: TrafficStats) -> Table:
         table.add_row(domain,str(count))
     return table
 
-def build_dashboard(stats: TrafficStats, recent_lines) -> Group:
-    tables = Table.grid(expand=True, padding=(0,1))
+def build_alerts_panel(alerts) -> Panel:
+    lines = [f"[bold red]{format_time(a.timestamp)}[/] {a.message}" for a in alerts]
+    return Panel("\n".join(lines), title="Alerts",border_style="red")
+
+def build_dashboard(stats: TrafficStats, recent_lines, alerts=()) -> Group:
+    
+    tables = Table.grid(expand=True, padding=(0, 1))
     tables.add_column(ratio=1)
     tables.add_column(ratio=1)
-    tables.add_row(build_services_table(stats),build_talkers_table(stats))
+    tables.add_row(build_services_table(stats), build_talkers_table(stats))
 
     recent = Panel("\n".join(recent_lines) or "Waiting for packets....",
-                   title="Latest packets",border_style="dim")
-    return Group(build_overview(stats),tables,build_dns_table(stats),recent)
+                   title="Latest packets", border_style="dim")
+
+    parts = [build_overview(stats)]
+    if alerts:  
+        parts.append(build_alerts_panel(alerts))
+    parts += [tables, build_dns_table(stats), recent]
+    return Group(*parts)
 
 class Dashboard:
     def __init__(self, stats: TrafficStats, refresh_interval:float=0.5,
@@ -67,11 +77,12 @@ class Dashboard:
         self.stats = stats
         self.refresh_interval = refresh_interval
         self.recent_lines = deque(maxlen=recent_count)
+        self.alerts = deque(maxlen=5)
         self._last_refresh = 0.0
         self._live = Live(self.render(),auto_refresh=False)
 
     def render(self) -> Group:
-        return build_dashboard(self.stats,self.recent_lines)
+        return build_dashboard(self.stats,self.recent_lines,self.alerts)
 
     def add(self,line:str) -> None:
         self.recent_lines.append(line)
@@ -79,7 +90,10 @@ class Dashboard:
         if now - self._last_refresh >= self.refresh_interval:
             self._last_refresh = now
             self._live.update(self.render(),refresh=True)
-
+            
+    def add_alert(self,alert:Alert) -> None:
+        self.alerts.append(alert)
+        self._live.update(self.render(), refresh=True)
     def __enter__(self) -> "Dashboard":
         self._live.start()
         return self

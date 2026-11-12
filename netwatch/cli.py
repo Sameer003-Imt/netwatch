@@ -3,7 +3,8 @@ import argparse
 from contextlib import nullcontext
 from datetime import datetime
 from .capture import live_capture, read_pcap
-from .formatting import format_bytes
+from .detectors import Alert, PortScanDetector
+from .formatting import format_bytes, format_time
 from .parser import PacketRecord
 from .dashboard import Dashboard
 from .stats import TrafficStats
@@ -19,7 +20,10 @@ def format_record(rec: PacketRecord) -> str:
         line += f" query={rec.dns_query}"
     return line
 
-def print_summary(stats: TrafficStats) -> None:
+def format_alert(alert: Alert) -> str:
+    return f"! ! ALERT {format_time(alert.timestamp)} {alert.kind}:{alert.message}"
+
+def print_summary(stats: TrafficStats, alerts) -> None:
     print("\n==== NetWatch Summary ====")
     print(f"Packets:        {stats.total_packets}")
     print(f"Data:           {format_bytes(stats.total_bytes)}")
@@ -39,6 +43,9 @@ def print_summary(stats: TrafficStats) -> None:
         print("\nTop DNS lookups:")
         for domain, count in stats.top_dns_queries():
             print(f"    {domain:<40}{count}")
+        print(f"\nAlerts:{len(alerts)}")
+        for alert in alerts:
+            print("" + format_alert(alert))
     
 
 def main(argv=None) -> None:
@@ -58,18 +65,30 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
 
     stats = TrafficStats()
+    detector = PortScanDetector()
+    alerts = []
     if args.live and not args.dashboard:
         print("Capturing live traffic... press Ctrl+C to stop.")
 
-    # nullcontext() does nothing; it lets us use one `with` for both cases.
+   
     with Dashboard(stats) if args.dashboard else nullcontext() as dashboard:
 
         def handle(rec: PacketRecord) -> None:
             stats.update(rec)
+            alert = detector.check(rec)
+            if alert is not None:
+                alerts.append(alert)
+
             if dashboard is not None:
                 dashboard.add(format_record(rec))
-            elif not args.quiet:
-                print(format_record(rec))
+                if alert is not None:
+                    dashboard.add_alert(alert)
+            else:
+                if not args.quiet:
+                    print(format_record(rec))
+                if alert is not None:
+                    print(format_alert(alert))
+           
 
         try:
             if args.pcap:
@@ -80,10 +99,10 @@ def main(argv=None) -> None:
             else:
                 live_capture(handle, interface=args.iface, count=args.count)
         except KeyboardInterrupt:
-            pass  # Ctrl+C: stop capturing and show the results
+            pass  
 
     if not args.dashboard:
-        print_summary(stats)
+        print_summary(stats, alerts)
 
 #----------------------------------------#########
     #parser = argparse.ArgumentParser(
