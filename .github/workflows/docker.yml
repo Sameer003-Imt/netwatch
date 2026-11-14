@@ -1,0 +1,34 @@
+name: Docker
+
+on: [push, pull_request]
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env for CI
+        run: echo "POSTGRES_PASSWORD=ci-password" > .env
+
+      - name: Start database and API
+        run: docker compose up --build -d --wait db api
+
+      - name: Run NetWatch on the demo capture
+        run: docker compose run --rm --build netwatch
+
+      - name: Check that the API returns the alerts
+        run: |
+          curl -sf --retry 10 --retry-connrefused --retry-delay 2 \
+            http://localhost:8000/alerts/summary | tee summary.json
+          grep -q PORT_SCAN summary.json
+          grep -q SUSPICIOUS_DNS summary.json
+          grep -q TRAFFIC_SPIKE summary.json
+
+      - name: Show logs if something failed
+        if: failure()
+        run: docker compose logs
+
+      - name: Clean up
+        if: always()
+        run: docker compose down -v
