@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: netwatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: netwatch
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netwatch"]
+      interval: 2s
+      retries: 10
+
+  netwatch:
+    build: .
+    command: ["--pcap", "samples/demo.pcap", "--quiet"]
+    environment:
+      NETWATCH_DB: postgresql://netwatch:${POSTGRES_PASSWORD}@db:5432/netwatch
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://netwatch:${POSTGRES_PASSWORD}@db:5432/netwatch
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

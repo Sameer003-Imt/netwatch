@@ -12,6 +12,7 @@ from .alertlog import AlertLog
 import os
 import argparse
 from . import __version__
+from .dbalertlog import DbAlertLog
 
 def format_record(rec: PacketRecord) -> str:
     time = datetime.fromtimestamp(rec.timestamp).strftime("%H:%M:%S")
@@ -68,6 +69,9 @@ def main(argv=None) -> None:
                         help="show a live dashboard instead of packet lines")
     parser.add_argument("--alert-log", metavar="FILE",
                         help="save alerts to this file (JSON Lines, e.g. alerts.jsonl)")
+    parser.add_argument("--db", metavar="URL",
+                        default=os.environ.get("NETWATCH_DB"),
+                        help="save alerts to PostgreSQL (or set NETWATC_DB)")
     parser.add_argument("--version",action="version",
                         version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
@@ -85,8 +89,9 @@ def main(argv=None) -> None:
     
     dashboard_cm = Dashboard(stats) if args.dashboard else nullcontext()
     log_cm = AlertLog(args.alert_log) if args.alert_log else nullcontext()
+    db_cm = DbAlertLog(args.db) if args.db else nullcontext()
 
-    with dashboard_cm as dashboard, log_cm as alert_log:
+    with dashboard_cm as dashboard, log_cm as alert_log, db_cm as db_log:
 
         def handle(rec: PacketRecord) -> None:
             stats.update(rec)
@@ -101,6 +106,12 @@ def main(argv=None) -> None:
             if alert_log is not None:
                 for alert in new_alerts:
                     alert_log.write(alert)
+
+            if db_log is not None:
+                            for alert in new_alerts:
+                                db_log.write(alert)
+                                
+            
 
             if dashboard is not None:
                 dashboard.add(format_record(rec))

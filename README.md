@@ -31,6 +31,20 @@ docker build -t netwatch .
 docker run --rm netwatch
 '''
 
+### Run with a database and API (Docker Compose)
+
+Netwatch can save its alerts to PostgreSQL, and a small FastAPI service shows them over HTTP.
+
+'''bash
+cp .env.example .enc  #then set your own password in .env
+docker compose up --build
+'''
+
+Then opne:
+- http://localhost:8000/alerts – latest alerts (filter with `?kind=PORT_SCAN`)
+- http://localhost:8000/alerts/summary – number of alerts of each type
+- http://localhost:8000/docs – interactive API docs
+
 ```bash
 git clone https://github.com/Sameer003-Imt/netwatch.git
 cd netwatch
