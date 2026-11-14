@@ -26,6 +26,11 @@ suspicious activity such as port scans, traffic spikes and suspicious DNS lookup
 
 ## Quick start
 
+'''bash
+docker build -t netwatch .
+docker run --rm netwatch
+'''
+
 ```bash
 git clone https://github.com/Sameer003-Imt/netwatch.git
 cd netwatch
