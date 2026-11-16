@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchAlerts, fetchSummary } from './api'
 import type { Alert, AlertCount } from './types'
-
+import AlertChart from './AlertChart'
 function App() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [summary, setSummary] = useState<AlertCount[]>([])
@@ -33,7 +33,7 @@ function App() {
           </button>
         ))}
       </section>
-
+      <AlertChart data={summary} />
       <table>
         <thead>
           <tr>

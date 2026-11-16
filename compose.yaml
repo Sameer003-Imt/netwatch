@@ -30,6 +30,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   db-data:
+

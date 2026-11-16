@@ -11,8 +11,8 @@ jobs:
       - name: Create .env for CI
         run: echo "POSTGRES_PASSWORD=ci-password" > .env
 
-      - name: Start database and API
-        run: docker compose up --build -d --wait db api
+      - name: Start database and API and dashboard
+        run: docker compose up --build -d --wait db api dashboard
 
       - name: Run NetWatch on the demo capture
         run: docker compose run --rm --build netwatch
@@ -24,6 +24,12 @@ jobs:
           grep -q PORT_SCAN summary.json
           grep -q SUSPICIOUS_DNS summary.json
           grep -q TRAFFIC_SPIKE summary.json
+
+            - name: Check that the dashboard is served
+        run: |
+          curl -sf --retry 10 --retry-connrefused --retry-delay 2 http://localhost:8080/ | grep -q 'id="root"'
+          curl -sf http://localhost:8080/alerts/summary | grep -q PORT_SCAN
+          
 
       - name: Show logs if something failed
         if: failure()
